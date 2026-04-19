@@ -84,7 +84,34 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .blind-sep{width:1px;height:44px;background:var(--border2);}
 .next-lbl{font-size:13px;color:var(--text2);margin-top:12px;text-align:center;}
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.control-stack{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+.control-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.control-row.spread{justify-content:space-between;}
+.control-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.control-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 2px;}
+.meta-pill{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;text-align:center;}
+.meta-pill .meta-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:4px;}
+.meta-pill .meta-val{font-size:18px;font-weight:600;line-height:1.1;}
+.mini-round{margin-top:6px;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;}
+.lock-chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 12px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;min-height:44px;}
+.lock-chip.on{background:var(--warning-bg);border-color:rgba(251,191,36,.35);color:var(--warning);} 
 .break-mode{text-align:center;padding:8px 0;}
+.mini-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.mini-title{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:10px;}
+.triple-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.mini-blind{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 8px;text-align:center;}
+.mini-blind .blind-lbl{margin-bottom:5px;}
+.mini-blind .blind-val{font-size:22px;}
+.payout-mini{display:flex;flex-direction:column;gap:6px;}
+.payout-mini-row{display:flex;justify-content:space-between;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;}
+.host-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px;}
+.player-mini-list{display:flex;flex-direction:column;gap:8px;}
+.player-mini-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;}
+.player-mini-left{display:flex;align-items:center;gap:8px;min-width:0;}
+.player-mini-name{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.player-mini-actions{display:flex;gap:6px;flex-shrink:0;}
+.player-mini-out{display:flex;flex-wrap:wrap;gap:6px;}
+.out-chip{background:var(--bg3);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px;color:var(--text2);}
 .break-title{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--warning);margin-bottom:8px;}
 .break-sub{font-size:13px;color:var(--text2);margin-top:8px;}
 
@@ -189,6 +216,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 
 <script type="text/babel">
 const {useState, useEffect, useRef} = React;
+const STORAGE_KEY='pokerTimerState_v3';
 
 // ── DATA ──────────────────────────────────────────────
 const TEMPLATES = {
@@ -240,6 +268,40 @@ function autoPayouts(n){
   return [{place:1,pct:50},{place:2,pct:30},{place:3,pct:20}];
 }
 
+function getDefaultBc(){
+  return {...TEMPLATES.standard,levels:TEMPLATES.standard.levels.map(l=>({...l}))};
+}
+function getDefaultGame(){
+  return {level:0,tLeft:TEMPLATES.standard.levelMins*60,bLeft:TEMPLATES.standard.breakMins*60,running:false,onBreak:false,started:false,startedAt:null,turboBackup:null,turboEnabled:false,lastAlertKey:null};
+}
+function saveState(state){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    return parsed&&typeof parsed==='object'?parsed:null;
+  }catch(e){return null;}
+}
+function beep(freq=880,duration=180){
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx) return;
+    const ctx=new Ctx();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.type='sine';
+    osc.frequency.value=freq;
+    gain.gain.value=0.04;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    setTimeout(()=>{osc.stop();ctx.close();},duration);
+  }catch(e){}
+}
+
 // ── COMPONENTS ────────────────────────────────────────
 
 function Header({g,bc,players,buyIn}){
@@ -263,36 +325,91 @@ function Header({g,bc,players,buyIn}){
         }
       </div>
       <div className="h-item r">
-        <span className="h-val">${pool}</span>
+        <span className="h-val">${pool.toLocaleString()}</span>
         <span className="h-lbl">{active} players left</span>
       </div>
     </div>
   );
 }
 
-function TimerTab({g,setG,bc,setBc}){
+function TimerTab({g,setG,bc,setBc,alertsOn,players,setPlayers,buyIn}){
   const levels=bc.levels;
   const blinds=levels[g.level]||levels[levels.length-1];
-  const nextB=levels[g.level+1];
+  const prevB=g.level>0?levels[g.level-1]:null;
+  const nextB=levels[g.level+1]||null;
   const totalSecs=bc.levelMins*60;
   const pct=totalSecs>0?Math.round(((totalSecs-g.tLeft)/totalSecs)*100):0;
+  const activePlayers=players.filter(p=>!p.elim);
+  const outPlayers=[...players.filter(p=>p.elim)].sort((a,b)=>a.place-b.place);
+  const pool=players.reduce((s,p)=>s+buyIn+(p.rebuys*buyIn),0)||players.length*buyIn;
+  const autoP=autoPayouts(players.length).map(p=>({...p,amt:Math.floor(pool*p.pct/100)}));
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{
+    const id=setInterval(()=>setNow(new Date()),1000);
+    return()=>clearInterval(id);
+  },[]);
+  const elapsedSecs=g.startedAt?Math.max(0,Math.floor((now.getTime()-g.startedAt)/1000)):0;
 
-  const toggle=()=>setG(p=>({...p,running:!p.running,started:true}));
-  const startBreak=()=>setG(p=>({...p,onBreak:true,bLeft:bc.breakMins*60,running:true,started:true}));
+  const toggle=()=>setG(p=>({...p,running:!p.running,started:true,startedAt:p.startedAt||Date.now()}));
+  const startBreak=()=>setG(p=>({...p,onBreak:true,bLeft:bc.breakMins*60,running:true,started:true,startedAt:p.startedAt||Date.now()}));
   const endBreak=()=>setG(p=>({...p,onBreak:false}));
   const nextLevel=()=>setG(p=>{
     const nl=Math.min(p.level+1,levels.length-1);
     return{...p,level:nl,tLeft:bc.levelMins*60,onBreak:false};
   });
   const turbo=()=>{
-    const nm=Math.max(3,Math.floor(bc.levelMins/2));
-    setBc(c=>({...c,levelMins:nm}));
-    setG(p=>({...p,tLeft:Math.floor(p.tLeft/2)}));
+    if(!g.turboEnabled) return;
+    setBc(c=>{
+      const nm=Math.max(3,Math.floor(c.levelMins/2));
+      const nbm=c.breakEvery>0?Math.max(1,Math.floor(c.breakMins/2)):c.breakMins;
+      setG(p=>({
+        ...p,
+        tLeft:p.onBreak?p.tLeft:Math.max(1,Math.min(Math.floor(p.tLeft/2),nm*60)),
+        bLeft:p.onBreak?Math.max(1,Math.min(Math.floor(p.bLeft/2),nbm*60)):p.bLeft,
+        turboBackup:{
+          levelMins:c.levelMins,
+          breakMins:c.breakMins,
+          tLeft:p.tLeft,
+          bLeft:p.bLeft,
+          onBreak:p.onBreak
+        }
+      }));
+      return {...c,levelMins:nm,breakMins:nbm};
+    });
   };
-  const reset=()=>setG(p=>({...p,level:0,tLeft:bc.levelMins*60,bLeft:bc.breakMins*60,running:false,onBreak:false,started:false}));
+  const undoTurbo=()=>{
+    if(!g.turboBackup) return;
+    setBc(c=>({...c,levelMins:g.turboBackup.levelMins,breakMins:g.turboBackup.breakMins}));
+    setG(p=>({...p,tLeft:g.turboBackup.tLeft,bLeft:g.turboBackup.bLeft,turboBackup:null}));
+  };
+  const reset=()=>{
+    if(window.confirm('Reset the tournament timer and return to level 1?')) setG(p=>({...p,level:0,tLeft:bc.levelMins*60,bLeft:bc.breakMins*60,running:false,onBreak:false,started:false,startedAt:null,turboBackup:null,turboEnabled:false,lastAlertKey:null}));
+  };
+
+  const eliminate=id=>{
+    setPlayers(ps=>{
+      const remaining=ps.filter(p=>!p.elim).length;
+      return ps.map(p=>p.id===id?{...p,elim:true,place:remaining,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}:p);
+    });
+  };
+  const rebuy=id=>setPlayers(ps=>ps.map(p=>p.id===id?{...p,rebuys:p.rebuys+1}:p));
 
   return(
     <div className="tab fade-in">
+      <div className="mini-card">
+        <div className="mini-title">Projected Payouts</div>
+        {players.length>0?(
+          <div className="payout-mini">
+            {autoP.map((p,i)=>(
+              <div key={i} className="payout-mini-row">
+                <span>{ordinal(p.place)} place</span>
+                <span>{p.pct}% · ${p.amt.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        ):<div style={{fontSize:13,color:'var(--text2)'}}>Add players to see payouts</div>}
+      </div>
+
       <div className="card" style={{textAlign:'center',marginBottom:14}}>
         {g.onBreak?(
           <div className="break-mode">
@@ -305,35 +422,101 @@ function TimerTab({g,setG,bc,setBc}){
             <div className="lvl-label">Level {g.level+1} of {levels.length}</div>
             <div className="timer-digits">{fmt(g.tLeft)}</div>
             <div className="prog-track"><div className="prog-fill" style={{width:pct+'%'}} /></div>
-            <div className="blinds-row">
-              <div className="blind-box">
-                <span className="blind-lbl">Small Blind</span>
-                <span className="blind-val">{fc(blinds.sb)}</span>
-              </div>
-              <div className="blind-sep"/>
-              <div className="blind-box">
-                <span className="blind-lbl">Big Blind</span>
-                <span className="blind-val">{fc(blinds.bb)}</span>
-              </div>
-            </div>
-            {nextB&&<div className="next-lbl">Next level: {fc(nextB.sb)} / {fc(nextB.bb)}</div>}
           </>
         )}
       </div>
 
-      <div className="controls" style={{marginBottom:8}}>
-        <button className={`btn ${g.running?'sec':'primary'} lg`} onClick={toggle}>
-          {g.running?'⏸  Pause':'▶  Play'}
-        </button>
-        {g.onBreak
-          ? <button className="btn sec" onClick={endBreak}>End Break</button>
-          : bc.breakMins>0&&<button className="btn sec" onClick={startBreak}>☕ Break</button>
-        }
-        <button className="btn sec" onClick={nextLevel}>Skip →</button>
+      <div className="mini-card">
+        <div className="mini-title">Blind Snapshot</div>
+        <div className="triple-grid">
+          <div className="mini-blind">
+            <div className="blind-lbl">Previous</div>
+            <div className="blind-val">{prevB?`${fc(prevB.sb)} / ${fc(prevB.bb)}`:'—'}</div>
+            <div className="mini-round">{g.level>0?`Round ${g.level}`:'Round —'}</div>
+          </div>
+          <div className="mini-blind" style={{borderColor:'var(--accent-border)',background:'var(--accent-bg)'}}>
+            <div className="blind-lbl">Current</div>
+            <div className="blind-val">{fc(blinds.sb)} / {fc(blinds.bb)}</div>
+            <div className="mini-round">Round {g.level+1}</div>
+          </div>
+          <div className="mini-blind">
+            <div className="blind-lbl">Next</div>
+            <div className="blind-val">{nextB?`${fc(nextB.sb)} / ${fc(nextB.bb)}`:'Done'}</div>
+            <div className="mini-round">{nextB?`Round ${g.level+2}`:'Final round'}</div>
+          </div>
+        </div>
       </div>
-      <div className="controls">
-        <button className="btn warn sm" onClick={turbo}>⚡ Turbo (halve times)</button>
-        <button className="btn ghost sm" onClick={reset}>↺ Reset</button>
+
+      <div className="control-stack">
+        <div className="control-meta">
+          <div className="meta-pill">
+            <div className="meta-lbl">Current Time</div>
+            <div className="meta-val">{now.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</div>
+          </div>
+          <div className="meta-pill">
+            <div className="meta-lbl">Total Elapsed</div>
+            <div className="meta-val">{fmt(elapsedSecs)}</div>
+          </div>
+        </div>
+
+        <div className="control-row">
+          <button className={`btn ${g.running?'sec':'primary'} full`} onClick={toggle}>
+            {g.running?'⏸  Pause':'▶  Play'}
+          </button>
+        </div>
+
+        <div className="control-row">
+          {g.onBreak
+            ? <button className="btn sec full" onClick={endBreak}>☕ End Break ({bc.breakMins} min)</button>
+            : bc.breakMins>0&&<button className="btn sec full" onClick={startBreak}>☕ Start {bc.breakMins}-Minute Break</button>
+          }
+        </div>
+
+        <div className="control-grid-2">
+          <button className="btn sec" onClick={nextLevel}>⏭ Skip Blind Level</button>
+          <button className="btn ghost" onClick={reset}>↺ Reset Timer</button>
+        </div>
+
+        <div className="control-grid-2">
+          <button className="btn warn" disabled={!g.turboEnabled} onClick={turbo} style={{opacity:g.turboEnabled?1:.45,fontSize:'15px',minHeight:'48px'}}>⚡ Turbo Now</button>
+          <button className={`lock-chip ${g.turboEnabled?'on':''}`} onClick={()=>setG(p=>({...p,turboEnabled:!p.turboEnabled}))}>
+            {g.turboEnabled?'🔓 Turbo Enabled':'🔒 Turbo Locked'}
+          </button>
+        </div>
+
+        {g.turboBackup&&<div className="control-row"><button className="btn sec full" onClick={undoTurbo}>↺ Undo Turbo</button></div>}
+      </div>
+      {alertsOn&&<div style={{marginTop:4,fontSize:12,color:'var(--text2)',textAlign:'center'}}>Sound alerts on level end and break end are enabled</div>}
+
+      <div className="host-grid">
+        <div className="mini-card">
+          <div className="mini-title">Players Left · {activePlayers.length} / {players.length||0}</div>
+          {activePlayers.length>0?(
+            <div className="player-mini-list">
+              {activePlayers.map(p=>(
+                <div key={p.id} className="player-mini-row">
+                  <div className="player-mini-left">
+                    <span className="player-mini-name">{p.name}</span>
+                    {p.rebuys>0&&<span className="badge rebuy-badge">+{p.rebuys}</span>}
+                  </div>
+                  <div className="player-mini-actions">
+                    <button className="icon-btn sm" title="Rebuy" onClick={()=>rebuy(p.id)}>↺</button>
+                    <button className="icon-btn danger sm" title="Knockout" onClick={()=>eliminate(p.id)}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ):<div style={{fontSize:13,color:'var(--text2)'}}>No active players</div>}
+        </div>
+
+        <div className="mini-card">
+          <div className="mini-title">Knockouts</div>
+          {outPlayers.length>0?(
+            <div className="player-mini-out">
+              {outPlayers.map(p=><span key={p.id} className="out-chip">#{p.place} {p.name}</span>)}
+            </div>
+          ):<div style={{fontSize:13,color:'var(--text2)'}}>No knockouts yet</div>}
+        </div>
       </div>
 
       <details style={{marginTop:16}}>
@@ -377,7 +560,9 @@ function PlayersTab({players,setPlayers,buyIn,setBuyIn}){
     });
   };
   const rebuy=id=>setPlayers(ps=>ps.map(p=>p.id===id?{...p,rebuys:p.rebuys+1}:p));
-  const remove=id=>setPlayers(ps=>ps.filter(p=>p.id!==id));
+  const remove=id=>{
+    if(window.confirm('Remove this player?')) setPlayers(ps=>ps.filter(p=>p.id!==id));
+  };
 
   return(
     <div className="tab fade-in">
@@ -448,7 +633,7 @@ function BlindsTab({bc,setBc,setG}){
     setTmpl(k);
     const t=TEMPLATES[k];
     setBc({...t,levels:t.levels.map(l=>({...l}))});
-    setG(p=>({...p,level:0,tLeft:t.levelMins*60,bLeft:t.breakMins*60,running:false,onBreak:false,started:false}));
+    setG(p=>({...p,level:0,tLeft:t.levelMins*60,bLeft:t.breakMins*60,running:false,onBreak:false,started:false,startedAt:null,turboBackup:null,turboEnabled:false}));
   };
   const updLevel=(i,f,v)=>setBc(c=>({...c,levels:c.levels.map((l,j)=>j===i?{...l,[f]:parseInt(v)||0}:l)}));
   const addLevel=()=>{
@@ -624,7 +809,7 @@ function PrizesTab({players,buyIn}){
   );
 }
 
-function SettingsTab({theme,setTheme}){
+function SettingsTab({theme,setTheme,onClearData,alertsOn,setAlertsOn}){
   return(
     <div className="tab fade-in">
       <div className="sec-title" style={{marginTop:0}}>Appearance</div>
@@ -633,6 +818,18 @@ function SettingsTab({theme,setTheme}){
         <div className="tog-wrap" style={{marginBottom:0,width:160}}>
           <button className={`tog-btn ${theme==='dark'?'on':''}`} onClick={()=>setTheme('dark')}>🌙 Dark</button>
           <button className={`tog-btn ${theme==='light'?'on':''}`} onClick={()=>setTheme('light')}>☀️ Light</button>
+        </div>
+      </div>
+
+      <div className="sec-title" style={{marginTop:20}}>Alerts</div>
+      <div className="s-row">
+        <div>
+          <div className="s-label">Sound alerts</div>
+          <div className="s-sub">Beep when a level or break ends</div>
+        </div>
+        <div className="tog-wrap" style={{marginBottom:0,width:160}}>
+          <button className={`tog-btn ${alertsOn?'on':''}`} onClick={()=>setAlertsOn(true)}>On</button>
+          <button className={`tog-btn ${!alertsOn?'on':''}`} onClick={()=>setAlertsOn(false)}>Off</button>
         </div>
       </div>
 
@@ -652,16 +849,31 @@ function SettingsTab({theme,setTheme}){
 
 // ── APP ────────────────────────────────────────────────
 function App(){
-  const [theme,setTheme]=useState('dark');
+  const loaded=loadState();
+  const [theme,setTheme]=useState(loaded?.theme||'dark');
   const [tab,setTab]=useState('timer');
-  const [buyIn,setBuyIn]=useState(20);
-  const [players,setPlayers]=useState([]);
-  const [chips,setChips]=useState(DEFAULT_CHIPS);
-  const [bc,setBc]=useState({...TEMPLATES.standard,levels:TEMPLATES.standard.levels.map(l=>({...l}))});
-  const [g,setG]=useState({level:0,tLeft:TEMPLATES.standard.levelMins*60,bLeft:TEMPLATES.standard.breakMins*60,running:false,onBreak:false,started:false});
+  const [buyIn,setBuyIn]=useState(Number.isFinite(loaded?.buyIn)?loaded.buyIn:20);
+  const [players,setPlayers]=useState(Array.isArray(loaded?.players)?loaded.players:[]);
+  const [chips,setChips]=useState(Array.isArray(loaded?.chips)&&loaded.chips.length?loaded.chips:DEFAULT_CHIPS);
+  const [bc,setBc]=useState(loaded?.bc?.levels?.length?loaded.bc:getDefaultBc());
+  const [g,setG]=useState(loaded?.g?{...getDefaultGame(),...loaded.g,running:false}:getDefaultGame());
+  const [alertsOn,setAlertsOn]=useState(loaded?.alertsOn!==false);
 
   const bcRef=useRef(bc);
+  const prevGRef=useRef(g);
   useEffect(()=>{bcRef.current=bc;},[bc]);
+
+  useEffect(()=>{
+    saveState({theme,buyIn,players,chips,bc,g:{...g,running:false},alertsOn});
+  },[theme,buyIn,players,chips,bc,g,alertsOn]);
+
+  useEffect(()=>{
+    const prev=prevGRef.current;
+    const levelEnded=!g.onBreak&&((prev.tLeft>1&&g.onBreak)||(prev.tLeft>1&&g.tLeft===0&&!g.running)||(prev.level!==g.level));
+    const breakEnded=prev.onBreak&&!g.onBreak;
+    if(alertsOn&&(levelEnded||breakEnded)) beep(levelEnded?880:660,200);
+    prevGRef.current=g;
+  },[g,alertsOn]);
 
   useEffect(()=>{
     if(!g.running) return;
@@ -685,6 +897,20 @@ function App(){
     return()=>clearInterval(id);
   },[g.running]);
 
+  const clearSavedData=()=>{
+    if(window.confirm('Clear all saved tournament data on this device?')){
+      localStorage.removeItem(STORAGE_KEY);
+      setTheme('dark');
+      setTab('timer');
+      setBuyIn(20);
+      setPlayers([]);
+      setChips(DEFAULT_CHIPS);
+      setBc(getDefaultBc());
+      setG(getDefaultGame());
+      setAlertsOn(true);
+    }
+  };
+
   const TABS=[
     {id:'timer',ico:'⏱',lbl:'Timer'},
     {id:'players',ico:'👥',lbl:'Players'},
@@ -698,12 +924,12 @@ function App(){
     <div data-theme={theme} className="app">
       <Header g={g} bc={bc} players={players} buyIn={buyIn}/>
       <div className="content">
-        {tab==='timer'&&<TimerTab g={g} setG={setG} bc={bc} setBc={setBc}/>}
+        {tab==='timer'&&<TimerTab g={g} setG={setG} bc={bc} setBc={setBc} alertsOn={alertsOn} players={players} setPlayers={setPlayers} buyIn={buyIn}/>}
         {tab==='players'&&<PlayersTab players={players} setPlayers={setPlayers} buyIn={buyIn} setBuyIn={setBuyIn}/>}
         {tab==='blinds'&&<BlindsTab bc={bc} setBc={setBc} setG={setG}/>}
         {tab==='chips'&&<ChipsTab chips={chips} setChips={setChips}/>}
         {tab==='prizes'&&<PrizesTab players={players} buyIn={buyIn}/>}
-        {tab==='settings'&&<SettingsTab theme={theme} setTheme={setTheme}/>}
+        {tab==='settings'&&<SettingsTab theme={theme} setTheme={setTheme} onClearData={clearSavedData} alertsOn={alertsOn} setAlertsOn={setAlertsOn}/>}
       </div>
       <nav className="bottom-nav">
         {TABS.map(t=>(
