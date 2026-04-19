@@ -27,6 +27,3 @@ Hosted at: https://pmontalvo.github.io/poker-timer
 - Seat assignment randomizer
 - Bounty/knockout tracking
 
-## Based On
-
-Forked from [pokerpulsepro-tauri](https://github.com/PMontalvo/pokerpulsepro-tauri)
