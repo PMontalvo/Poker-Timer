@@ -312,10 +312,6 @@ function Header({g,bc,players,buyIn}){
   return(
     <div className="header-bar">
       <div className="h-item">
-        <span className="h-lbl">Level</span>
-        <span className="h-val">{g.level+1}</span>
-      </div>
-      <div className="h-item c">
         {g.onBreak
           ? <span className="break-chip">BREAK</span>
           : <>
@@ -415,11 +411,10 @@ function TimerTab({g,setG,bc,setBc,alertsOn,players,setPlayers,buyIn}){
           <div className="break-mode">
             <div className="break-title">☕ BREAK TIME</div>
             <div className="timer-digits">{fmt(g.bLeft)}</div>
-            <div className="break-sub">Resume — Level {g.level+1} · {fc(blinds.sb)} / {fc(blinds.bb)}</div>
+            <div className="break-sub">Resume — {fc(blinds.sb)} / {fc(blinds.bb)}</div>
           </div>
         ):(
           <>
-            <div className="lvl-label">Level {g.level+1} of {levels.length}</div>
             <div className="timer-digits">{fmt(g.tLeft)}</div>
             <div className="prog-track"><div className="prog-fill" style={{width:pct+'%'}} /></div>
           </>
