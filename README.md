@@ -15,7 +15,7 @@ A fully featured home game poker tournament manager that runs as a single HTML f
 
 Open `index.html` in any browser. No dependencies, no server required.
 
-Hosted at: https://pmontalvo.github.io/poker-timer
+Hosted at: https://pmontalvo.github.io/Poker-Timer
 
 ## Roadmap
 
